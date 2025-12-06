@@ -72,10 +72,19 @@
 
 (defmulti process-task first)
 
+(defn session-name-for-issue
+  "Generate a unique session name for an issue.
+   Includes repo to avoid collisions across projects."
+  [issue-number]
+  (let [repo (:repo @config)
+        ;; Replace / with - for valid session name
+        safe-repo (str/replace repo "/" "-")]
+    (str "autobot-" safe-repo "-issue-" issue-number)))
+
 (defmethod process-task :create-pr
   [[_ {:keys [number title body]}]]
   (let [repo (:repo @config)
-        session-name (str "autobot-issue-" number)  ; Session per issue
+        session-name (session-name-for-issue number)
 
         result (claude-run session-name
                  (str "Implement GitHub issue #" number " for repo " repo "\n\n"
