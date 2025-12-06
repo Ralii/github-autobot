@@ -80,10 +80,11 @@
                  (str "Implement GitHub issue #" number " for repo " repo "\n\n"
                       "Title: " title "\n"
                       "Description: " body "\n\n"
-                      "1. Create branch 'autobot/issue-" number "'\n"
-                      "2. Implement the fix/feature\n"
-                      "3. Run tests\n"
-                      "4. Create PR with 'gh pr create' referencing issue #" number))]
+                      "1. First, checkout main and pull latest: git checkout main && git pull origin main\n"
+                      "2. Create branch 'autobot/issue-" number "' from main\n"
+                      "3. Implement the fix/feature\n"
+                      "4. Run tests if they exist\n"
+                      "5. Create PR with 'gh pr create' referencing issue #" number))]
 
     (when (:success result)
       ;; Find the created PR and track it with session name
@@ -175,24 +176,87 @@
   (start-worker!)
   (start-issue-feeder!)
   (start-comment-feeder!)
-  (println "🤖 GitHub Autobot started"))
+  (println "🤖 GitHub Autobot started for" (:repo @config))
+  (println "   Working dir:" (:working-dir @config))
+  (println "   Poll interval:" (/ (:poll-interval-ms @config) 1000) "seconds")
+  (println "   Listening for:" (:autobot-tag @config) "comments"))
 
 (defn stop! []
   (close! work-queue))
+
+;;; =============================================================================
+;;; Auto-detection & CLI
+;;; =============================================================================
+
+(defn detect-working-dir
+  "Get current working directory."
+  []
+  (System/getProperty "user.dir"))
+
+(defn detect-github-repo
+  "Detect GitHub repo from git remote origin."
+  [working-dir]
+  (let [result (sh "git" "remote" "get-url" "origin" :dir working-dir)]
+    (when (zero? (:exit result))
+      (let [url (str/trim (:out result))]
+        (cond
+          ;; SSH format: git@github.com:owner/repo.git
+          (str/starts-with? url "git@github.com:")
+          (-> url
+              (str/replace #"^git@github.com:" "")
+              (str/replace #"\.git$" ""))
+
+          ;; HTTPS format: https://github.com/owner/repo.git
+          (str/includes? url "github.com/")
+          (-> url
+              (str/replace #"^https://github.com/" "")
+              (str/replace #"\.git$" ""))
+
+          :else nil)))))
+
+(defn -main
+  "Start GitHub Autobot in current directory.
+   Auto-detects working directory and GitHub repo from git remote.
+
+   Usage: clj -M -m github-autobot.core [poll-interval-seconds]
+
+   Example:
+     cd /path/to/your/repo
+     clj -M -m github-autobot.core        # default 60s poll
+     clj -M -m github-autobot.core 30     # 30s poll interval"
+  [& args]
+  (let [working-dir (detect-working-dir)
+        repo (detect-github-repo working-dir)
+        poll-interval (if (first args)
+                        (* 1000 (Integer/parseInt (first args)))
+                        60000)]
+    (if repo
+      (do
+        (start! {:repo repo
+                 :working-dir working-dir
+                 :poll-interval-ms poll-interval})
+        ;; Keep the process alive
+        @(promise))
+      (do
+        (println "❌ Error: Could not detect GitHub repo.")
+        (println "   Make sure you're in a git repository with a GitHub remote.")
+        (System/exit 1)))))
 
 ;;; =============================================================================
 ;;; REPL
 ;;; =============================================================================
 
 (comment
+  ;; Manual start with explicit config
   (start! {:repo "user/repo" :working-dir "/path/to/repo"})
+
+  ;; Or auto-detect (like -main does)
+  (start! {:repo (detect-github-repo (detect-working-dir))
+           :working-dir (detect-working-dir)})
 
   @state
   ;; {:watched-prs {123 {:issue-number 42 :session-name "autobot-issue-42"}}
   ;;  :processed-issues #{42}
   ;;  :processed-comments #{"abc"}}
-
-  ;; Claude sessions are managed by the claude CLI
-  ;; Each session has full conversation history
 
   (stop!))

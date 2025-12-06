@@ -17,27 +17,40 @@ Automated GitHub Issue to PR pipeline using Claude. When issues are created in y
 
 ## Usage
 
-### Configuration
+### Quick Start (Command Line)
 
-Configure the autobot with your repository settings:
+The easiest way to run github-autobot is from within a git repository. It auto-detects the GitHub repo from the git remote:
+
+```bash
+cd /path/to/your/repo
+clj -M:run                # Uses 60s poll interval
+clj -M:run 30             # Uses 30s poll interval
+```
+
+Output:
+```
+🤖 GitHub Autobot started for owner/repo
+   Working dir: /path/to/your/repo
+   Poll interval: 60 seconds
+   Listening for: @autobot comments
+```
+
+### REPL Usage
+
+For more control, you can start from the REPL:
 
 ```clojure
 (require '[github-autobot.core :as autobot])
 
+;; Auto-detect repo from current directory
+(autobot/start! {:repo (autobot/detect-github-repo (autobot/detect-working-dir))
+                 :working-dir (autobot/detect-working-dir)})
+
+;; Or manually configure
 (autobot/start! {:repo "owner/repo"
                  :working-dir "/path/to/local/repo"
                  :poll-interval-ms 60000        ; optional, default 60s
-                 :autobot-tag "@autobot"        ; optional, trigger for comments
-                 :claude-path "/path/to/claude" ; optional
-                 :gh-path "/path/to/gh"})       ; optional
-```
-
-### Starting the Bot
-
-```clojure
-;; Start watching issues and processing them
-(autobot/start! {:repo "user/my-project"
-                 :working-dir "/home/user/my-project"})
+                 :autobot-tag "@autobot"})      ; optional, trigger for comments
 
 ;; Check current state
 @autobot/state
