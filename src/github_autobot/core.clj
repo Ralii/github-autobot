@@ -65,6 +65,14 @@
           (try (json/parse-string out true)
                (catch Exception _ out)))))))
 
+(defn has-write-access?
+  "Check if a user has write access to the repo.
+   Uses gh api to check collaborator permission level."
+  [username]
+  (let [repo (:repo @config)
+        result (gh "api" (str "/repos/" repo "/collaborators/" username "/permission"))]
+    (contains? #{"admin" "write"} (:permission result))))
+
 ;;; =============================================================================
 ;;; Task Processing
 ;;; =============================================================================
@@ -135,10 +143,13 @@
 (defn start-issue-feeder! []
   (go-loop []
     (let [issues (gh "issue" "list" "-R" (:repo @config)
-                     "--state" "open" "--json" "number,title,body" "--limit" "5")]
-      (doseq [{:keys [number] :as issue} issues]
+                     "--state" "open" "--json" "number,title,body,author" "--limit" "5")]
+      (doseq [{:keys [number author] :as issue} issues]
         (when-not (contains? (:processed-issues @state) number)
-          (>! work-queue [:create-pr issue]))))
+          (let [username (:login author)]
+            (if (has-write-access? username)
+              (>! work-queue [:create-pr issue])
+              (println "⏭️ Skipping issue #" number "- author" username "lacks write access"))))))
     (<! (timeout (:poll-interval-ms @config)))
     (recur)))
 
@@ -153,17 +164,20 @@
           (when (#{"MERGED" "CLOSED"} (:state pr-data))
             (swap! state update :watched-prs dissoc pr-number))
 
-          ;; Queue new @autobot comments
+          ;; Queue new @autobot comments from users with write access
           (let [comments (->> (concat (:comments pr-data)
                                       (mapcat :comments (:reviews pr-data)))
                               (filter #(str/includes? (:body % "") tag))
                               (remove #(contains? (:processed-comments @state) (:id %))))]
             (doseq [c comments]
-              (>! work-queue [:implement-comment
-                              {:id (:id c)
-                               :pr-number pr-number
-                               :body (:body c)
-                               :author (get-in c [:author :login])}]))))))
+              (let [author (get-in c [:author :login])]
+                (if (has-write-access? author)
+                  (>! work-queue [:implement-comment
+                                  {:id (:id c)
+                                   :pr-number pr-number
+                                   :body (:body c)
+                                   :author author}])
+                  (println "⏭️ Skipping comment from" author "- lacks write access"))))))))
     (<! (timeout (:poll-interval-ms @config)))
     (recur)))
 
