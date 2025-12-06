@@ -19,12 +19,14 @@ Automated GitHub Issue to PR pipeline using Claude. When issues are created in y
 
 ### Quick Start (Command Line)
 
-The easiest way to run github-autobot is from within a git repository. It auto-detects the GitHub repo from the git remote:
+Run from the github-autobot directory, pointing to any git repository:
 
 ```bash
-cd /path/to/your/repo
-clj -M:run                # Uses 60s poll interval
-clj -M:run 30             # Uses 30s poll interval
+# From the github-autobot directory:
+clj -M:run /path/to/target-repo          # Watch that repo, 60s poll
+clj -M:run /path/to/target-repo 30       # Watch that repo, 30s poll
+clj -M:run                               # Watch current dir, 60s poll
+clj -M:run 30                            # Watch current dir, 30s poll
 ```
 
 Output:

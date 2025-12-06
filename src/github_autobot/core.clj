@@ -214,32 +214,50 @@
 
           :else nil)))))
 
+(defn parse-args
+  "Parse command line arguments.
+   Returns {:working-dir path :poll-interval-ms ms}"
+  [args]
+  (loop [args args
+         opts {:poll-interval-ms 60000}]
+    (if (empty? args)
+      opts
+      (let [arg (first args)]
+        (cond
+          ;; If it's a number, treat as poll interval
+          (re-matches #"\d+" arg)
+          (recur (rest args) (assoc opts :poll-interval-ms (* 1000 (Integer/parseInt arg))))
+
+          ;; Otherwise treat as path
+          :else
+          (recur (rest args) (assoc opts :working-dir arg)))))))
+
 (defn -main
-  "Start GitHub Autobot in current directory.
-   Auto-detects working directory and GitHub repo from git remote.
+  "Start GitHub Autobot for a repository.
+   Auto-detects GitHub repo from git remote.
 
-   Usage: clj -M -m github-autobot.core [poll-interval-seconds]
+   Usage: clj -M:run [path] [poll-interval-seconds]
 
-   Example:
-     cd /path/to/your/repo
-     clj -M -m github-autobot.core        # default 60s poll
-     clj -M -m github-autobot.core 30     # 30s poll interval"
+   Examples:
+     clj -M:run                           # Current dir, 60s poll
+     clj -M:run /path/to/repo             # Specific repo, 60s poll
+     clj -M:run /path/to/repo 30          # Specific repo, 30s poll
+     clj -M:run 30                        # Current dir, 30s poll"
   [& args]
-  (let [working-dir (detect-working-dir)
-        repo (detect-github-repo working-dir)
-        poll-interval (if (first args)
-                        (* 1000 (Integer/parseInt (first args)))
-                        60000)]
+  (let [{:keys [working-dir poll-interval-ms]} (parse-args args)
+        working-dir (or working-dir (detect-working-dir))
+        repo (detect-github-repo working-dir)]
     (if repo
       (do
         (start! {:repo repo
                  :working-dir working-dir
-                 :poll-interval-ms poll-interval})
+                 :poll-interval-ms poll-interval-ms})
         ;; Keep the process alive
         @(promise))
       (do
         (println "❌ Error: Could not detect GitHub repo.")
-        (println "   Make sure you're in a git repository with a GitHub remote.")
+        (println "   Make sure the path is a git repository with a GitHub remote.")
+        (println "   Path:" working-dir)
         (System/exit 1)))))
 
 ;;; =============================================================================
