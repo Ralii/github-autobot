@@ -31,7 +31,8 @@
   (atom {:repo "owner/repo"
          :working-dir "/path/to/repo"
          :poll-interval-ms 60000
-         :autobot-tag "@autobot"}))
+         :autobot-tag "@autobot"
+         :issue-label "autobot"}))
 
 (defonce state
   (atom {:watched-prs {}         ; {pr-number -> {:issue-number :session-name}}
@@ -64,14 +65,6 @@
         (when-not (str/blank? out)
           (try (json/parse-string out true)
                (catch Exception _ out)))))))
-
-(defn has-write-access?
-  "Check if a user has write access to the repo.
-   Uses gh api to check collaborator permission level."
-  [username]
-  (let [repo (:repo @config)
-        result (gh "api" (str "/repos/" repo "/collaborators/" username "/permission"))]
-    (contains? #{"admin" "write"} (:permission result))))
 
 ;;; =============================================================================
 ;;; Task Processing
@@ -142,14 +135,13 @@
 
 (defn start-issue-feeder! []
   (go-loop []
-    (let [issues (gh "issue" "list" "-R" (:repo @config)
-                     "--state" "open" "--json" "number,title,body,author" "--limit" "5")]
-      (doseq [{:keys [number author] :as issue} issues]
+    (let [label (:issue-label @config)
+          issues (gh "issue" "list" "-R" (:repo @config)
+                     "--label" label
+                     "--state" "open" "--json" "number,title,body" "--limit" "5")]
+      (doseq [{:keys [number] :as issue} issues]
         (when-not (contains? (:processed-issues @state) number)
-          (let [username (:login author)]
-            (if (has-write-access? username)
-              (>! work-queue [:create-pr issue])
-              (println "⏭️ Skipping issue #" number "- author" username "lacks write access"))))))
+          (>! work-queue [:create-pr issue]))))
     (<! (timeout (:poll-interval-ms @config)))
     (recur)))
 
@@ -164,20 +156,17 @@
           (when (#{"MERGED" "CLOSED"} (:state pr-data))
             (swap! state update :watched-prs dissoc pr-number))
 
-          ;; Queue new @autobot comments from users with write access
+          ;; Queue new @autobot comments
           (let [comments (->> (concat (:comments pr-data)
                                       (mapcat :comments (:reviews pr-data)))
                               (filter #(str/includes? (:body % "") tag))
                               (remove #(contains? (:processed-comments @state) (:id %))))]
             (doseq [c comments]
-              (let [author (get-in c [:author :login])]
-                (if (has-write-access? author)
-                  (>! work-queue [:implement-comment
-                                  {:id (:id c)
-                                   :pr-number pr-number
-                                   :body (:body c)
-                                   :author author}])
-                  (println "⏭️ Skipping comment from" author "- lacks write access"))))))))
+              (>! work-queue [:implement-comment
+                              {:id (:id c)
+                               :pr-number pr-number
+                               :body (:body c)
+                               :author (get-in c [:author :login])}]))))))
     (<! (timeout (:poll-interval-ms @config)))
     (recur)))
 
@@ -193,7 +182,8 @@
   (println "🤖 GitHub Autobot started for" (:repo @config))
   (println "   Working dir:" (:working-dir @config))
   (println "   Poll interval:" (/ (:poll-interval-ms @config) 1000) "seconds")
-  (println "   Listening for:" (:autobot-tag @config) "comments"))
+  (println "   Issue label:" (:issue-label @config))
+  (println "   Comment trigger:" (:autobot-tag @config)))
 
 (defn stop! []
   (close! work-queue))
