@@ -11,18 +11,39 @@ Automated GitHub Issue to PR pipeline using Claude. When issues are created in y
 
 ## Requirements
 
-- Clojure 1.12+
+- [Babashka](https://github.com/babashka/babashka) (or Clojure 1.12+)
 - [Claude CLI](https://github.com/anthropics/claude-code) installed
 - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated
 
-## Usage
+## Installation
 
-### Quick Start (Command Line)
-
-Run from the github-autobot directory, pointing to any git repository:
+### With bbin (recommended)
 
 ```bash
-# From the github-autobot directory:
+bbin install io.github.Ralii/github-autobot
+```
+
+Then run from any git repository:
+
+```bash
+github-autobot                           # Watch current dir, 60s poll
+github-autobot /path/to/target-repo      # Watch that repo, 60s poll
+github-autobot /path/to/target-repo 30   # Watch that repo, 30s poll
+```
+
+### Manual
+
+Clone this repo and run with Babashka:
+
+```bash
+bb -m github-autobot.core /path/to/target-repo
+bb -m github-autobot.core /path/to/target-repo 30
+bb -m github-autobot.core                # Watch current dir
+```
+
+Or with Clojure:
+
+```bash
 clj -M:run /path/to/target-repo          # Watch that repo, 60s poll
 clj -M:run /path/to/target-repo 30       # Watch that repo, 30s poll
 clj -M:run                               # Watch current dir, 60s poll

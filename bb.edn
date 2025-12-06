@@ -1,0 +1,3 @@
+{:paths ["src"]
+ :deps {}
+ :bbin/bin {github-autobot {:main-opts ["-m" "github-autobot.core"]}}}
