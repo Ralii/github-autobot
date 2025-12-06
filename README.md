@@ -54,6 +54,39 @@ Configure the autobot with your repository settings:
 4. **Comment Feeder**: Watches PRs for `@autobot` mentions
 5. **Feedback Loop**: Resumes the Claude session to address review comments
 
+## Session Persistence
+
+One of the key features of github-autobot is session persistence. Each GitHub issue gets its own named Claude session (e.g., `autobot-issue-42`), which persists the full conversation history.
+
+### How Sessions Work
+
+- When a new issue is picked up, a session is created with the name `autobot-issue-{number}`
+- The session is stored and associated with the resulting PR
+- When review comments mention `@autobot`, the bot resumes the *same* session
+- Claude retains full context: the original issue, implementation decisions, and all previous feedback
+
+### Benefits
+
+- **Continuous context**: Claude remembers why it made certain implementation choices
+- **Coherent iterations**: Follow-up requests don't need to re-explain the problem
+- **Efficient feedback loops**: Review comments are addressed with full awareness of prior work
+
+### Example Flow
+
+```
+Issue #42 opened
+  └─> Session "autobot-issue-42" created
+      └─> Claude implements feature, creates PR #99
+
+PR #99 receives comment: "@autobot add error handling"
+  └─> Session "autobot-issue-42" resumed
+      └─> Claude adds error handling with full context
+
+PR #99 receives comment: "@autobot also add tests"
+  └─> Session "autobot-issue-42" resumed again
+      └─> Claude adds tests, knowing what was implemented
+```
+
 ## Development
 
 Start a REPL with nREPL support:
